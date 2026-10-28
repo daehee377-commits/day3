@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        // key 100개(a1~a100), 각 key의 배열 길이는 101~200개로 서로 다름
+        let data = {}
+        let v = []
+        for (let i = 1; i <= 100; i++) {
+            v.push(i)                       // v = [1, 2, ..., 100]
+            data["a"+i] = []
+            for (let j = 1; j <= 100 + i; j++) {
+                data["a"+i].push(i*1000 + j)   // 예: a1 -> 1001, 1002, ...
+            }
+        }
+        const show = (id)=> console.log(id+ " 를 보여줘")
+        for (const i of v) {
+            for (const element of data["a"+i]) {
+                console.log(element+"\n")
+                show(element)
+            }
+        }
+    </script>
+</body>
+</html>

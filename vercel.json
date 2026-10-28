@@ -1,0 +1,6 @@
+{
+  "rewrites": [{ "source": "/", "destination": "/map.html" }],
+  "functions": {
+    "api/find_spots.js": { "includeFiles": "jeju_spots.json" }
+  }
+}
