@@ -23,8 +23,8 @@ http
       return send(res, result.error ? 400 : 200, "application/json", JSON.stringify(result));
     }
 
-    if (url.pathname === "/" || url.pathname === "/map.html") {
-      return send(res, 200, "text/html", fs.readFileSync(path.join(ROOT, "map.html"), "utf8"));
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      return send(res, 200, "text/html", fs.readFileSync(path.join(ROOT, "index.html"), "utf8"));
     }
 
     send(res, 404, "text/plain", "Not found");
