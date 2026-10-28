@@ -1,7 +1,5 @@
 const { toolDefinitions, toolHandlers } = require("./tools");
 
-// 모델 이름은 환경변수 GEMINI_MODEL 로 바꿀 수 있다.
-const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 const MAX_STEPS = 6;
 const MAX_MESSAGES = 10;
 const MAX_CHARS = 1000;
@@ -20,26 +18,37 @@ const functionDeclarations = toolDefinitions.map((t) => ({
   parameters: t.input_schema,
 }));
 
+// 앞 모델이 막혀 있으면(더 이상 제공되지 않음 · 없음) 다음 모델로 넘어간다.
+const MODELS = [...new Set([process.env.GEMINI_MODEL, "gemini-3.8-flash", "gemini-flash-latest"].filter(Boolean))];
+let workingModel = null;
+
 async function callGemini(contents) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-    {
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: SYSTEM.replace("{TODAY}", new Date().toISOString().slice(0, 10)) }] },
+    contents,
+    tools: [{ functionDeclarations }],
+    generationConfig: { maxOutputTokens: 2048 },
+  });
+
+  const order = workingModel ? [workingModel] : MODELS;
+  let lastError;
+  for (const model of order) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-goog-api-key": process.env.GEMINI_API_KEY,
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM.replace("{TODAY}", new Date().toISOString().slice(0, 10)) }] },
-        contents,
-        tools: [{ functionDeclarations }],
-        generationConfig: { maxOutputTokens: 2048 },
-      }),
+      headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
+      body,
+    });
+    const data = await res.json();
+    if (res.ok) {
+      workingModel = model;
+      return data;
     }
-  );
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || `Gemini API ${res.status}`);
-  return data;
+    lastError = new Error(`[${model}] ${data?.error?.message || res.status}`);
+    const modelProblem = res.status === 404 || /no longer available|not found|not supported/i.test(data?.error?.message || "");
+    if (!modelProblem) break;
+  }
+  workingModel = null;
+  throw lastError;
 }
 
 module.exports = async (req, res) => {
