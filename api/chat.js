@@ -1,7 +1,7 @@
 const { toolDefinitions, toolHandlers } = require("./tools");
 
 // 모델 이름은 환경변수 GEMINI_MODEL 로 바꿀 수 있다.
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 const MAX_STEPS = 6;
 const MAX_MESSAGES = 10;
 const MAX_CHARS = 1000;
