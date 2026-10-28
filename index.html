@@ -120,6 +120,11 @@
     }
 
     async function ask(text) {
+      if (!/^https?:$/.test(location.protocol)) {
+        add("bot err", "이 페이지가 파일로 열려 있어 서버(/api/chat)에 연결할 수 없습니다. 배포된 Vercel 주소(https://…vercel.app)로 접속해 주세요.");
+        console.error("[열린 주소]", location.href, "→ file:// 로 열면 /api/chat 을 호출할 수 없습니다.");
+        return;
+      }
       history.push({ role: "user", content: text });
       add("user", text);
       $("chips").style.display = "none";
