@@ -22,6 +22,17 @@ const functionDeclarations = toolDefinitions.map((t) => ({
 const MODELS = [...new Set([process.env.GEMINI_MODEL, "gemini-3.8-flash", "gemini-flash-latest"].filter(Boolean))];
 let workingModel = null;
 
+const RETRY_WAITS_MS = [2000, 4000]; // 429/503 이면 2초, 4초 뒤에 다시 시도 (최대 2번)
+const MAX_HINTED_WAIT_MS = 8000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Gemini 오류 응답의 RetryInfo("retryDelay": "12s")가 있으면 초 단위로 꺼낸다.
+function serverRetryDelaySec(data) {
+  const info = data?.error?.details?.find((d) => typeof d?.retryDelay === "string");
+  const n = info ? parseFloat(info.retryDelay) : NaN;
+  return Number.isFinite(n) ? Math.ceil(n) : null;
+}
+
 async function callGemini(contents, debug) {
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: SYSTEM.replace("{TODAY}", new Date().toISOString().slice(0, 10)) }] },
@@ -33,23 +44,38 @@ async function callGemini(contents, debug) {
   const order = workingModel ? [workingModel] : MODELS;
   let lastError;
   for (const model of order) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
-      body,
-    });
-    const rawText = await res.text();
     let data;
-    let raw = rawText; // JSON 이 아니면 원문 문자열 그대로
-    try { data = JSON.parse(rawText); raw = data; } catch { data = { error: { message: rawText.slice(0, 500) } }; }
-    // 제미나이가 보낸 응답을 가공하지 않고 그대로 담는다.
-    debug.push({ model, status: res.status, raw });
-    if (res.ok) {
-      workingModel = model;
-      return data;
+    // 한도 초과(429)나 서버 혼잡(503)이면 잠깐 기다렸다가 다시 시도한다.
+    for (let attempt = 0; attempt <= RETRY_WAITS_MS.length; attempt++) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
+        body,
+      });
+      const rawText = await res.text();
+      let raw = rawText; // JSON 이 아니면 원문 문자열 그대로
+      try { data = JSON.parse(rawText); raw = data; } catch { data = { error: { message: rawText.slice(0, 500) } }; }
+      // 제미나이가 보낸 응답을 가공하지 않고 그대로 담는다.
+      debug.push({ model, status: res.status, raw });
+      if (res.ok) {
+        workingModel = model;
+        return data;
+      }
+
+      lastError = new Error(`[${model}] ${data?.error?.message || res.status}`);
+      if (res.status !== 429 && res.status !== 503) break;
+
+      lastError.rateLimited = true;
+      lastError.retryAfter = serverRetryDelaySec(data) ?? 15;
+      if (attempt === RETRY_WAITS_MS.length) break;
+      const hinted = serverRetryDelaySec(data);
+      const wait = hinted && hinted * 1000 <= MAX_HINTED_WAIT_MS ? hinted * 1000 : RETRY_WAITS_MS[attempt];
+      await sleep(wait + Math.random() * 500);
     }
-    lastError = new Error(`[${model}] ${data?.error?.message || res.status}`);
-    const modelProblem = res.status === 404 || /no longer available|not found|not supported/i.test(data?.error?.message || "");
+
+    if (lastError.rateLimited) break; // 한도 문제는 다른 모델로 바꿔도 같으니 멈춘다.
+    const msg = data?.error?.message || "";
+    const modelProblem = /no longer available|not found|not supported/i.test(msg) || data?.error?.code === 404;
     if (!modelProblem) break;
   }
   workingModel = null;
@@ -107,6 +133,15 @@ module.exports = async (req, res) => {
     }
     res.status(200).json({ reply: "도구 호출이 너무 길어져 중단했습니다. 질문을 조금 더 구체적으로 해주세요.", toolCalls, spots: [...spots.values()], debug, toolResults });
   } catch (e) {
+    if (e.rateLimited) {
+      return res.status(429).json({
+        error: "사용자가 많아 잠시 기다리는 중입니다. 곧 다시 시도합니다.",
+        rateLimited: true,
+        retryAfter: e.retryAfter,
+        debug,
+        toolResults,
+      });
+    }
     res.status(502).json({ error: e.message, debug, toolResults });
   }
 };

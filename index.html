@@ -128,13 +128,25 @@
       wait.innerHTML = '<span class="dots"><span>●</span><span>●</span><span>●</span></span> 날씨와 관광지를 검색하는 중…';
       let data;
       try {
-        const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: history }) });
-        const rawText = await res.text();
-        console.log("[서버 응답 원문] HTTP", res.status, rawText);
-        try { data = JSON.parse(rawText); } catch { throw new Error(`서버가 JSON 이 아닌 응답을 보냈습니다 (HTTP ${res.status}). 콘솔의 원문을 확인하세요.`); }
-        console.log("[서버 응답 객체]", data);
-        showRaw(data);
+        let res;
+        // 한도 초과(429)면 안내를 띄우고 잠시 기다렸다가 자동으로 다시 보낸다(최대 3번).
+        for (let attempt = 0; ; attempt++) {
+          res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: history }) });
+          const rawText = await res.text();
+          console.log("[서버 응답 원문] HTTP", res.status, rawText);
+          try { data = JSON.parse(rawText); } catch { throw new Error(`서버가 JSON 이 아닌 응답을 보냈습니다 (HTTP ${res.status}). 콘솔의 원문을 확인하세요.`); }
+          console.log("[서버 응답 객체]", data);
+          showRaw(data);
+          if (!data.rateLimited || attempt >= 3) break;
+          const sec = Math.min(Math.max(Number(data.retryAfter) || 10, 5), 30);
+          for (let s = sec; s > 0; s--) {
+            wait.textContent = `사용자가 많아 잠시 기다리는 중… ${s}초 뒤 자동으로 다시 시도합니다 (${attempt + 1}/3)`;
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+          wait.innerHTML = '<span class="dots"><span>●</span><span>●</span><span>●</span></span> 다시 시도하는 중…';
+        }
         wait.remove();
+        if (data.rateLimited) throw new Error("사용자가 많아 아직 처리하지 못했습니다. 1분쯤 뒤에 다시 질문해 주세요.");
         if (!res.ok) throw new Error(data.error || res.status);
         showTools(data.toolCalls);
         add("bot", data.reply);
