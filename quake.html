@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>실시간 지진 지도</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; height: 100vh; display: flex; flex-direction: column; background: #0b0f19; color: #e8ecf4; font-family: "Segoe UI", "Malgun Gothic", sans-serif; }
+    header { padding: 10px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; background: #121829; border-bottom: 1px solid #243049; }
+    h1 { font-size: 18px; margin: 0; }
+    h1 span { color: #ff5a4f; }
+    select, button { background: #1b2540; color: #e8ecf4; border: 1px solid #2f3d5f; border-radius: 6px; padding: 6px 10px; font-size: 14px; }
+    button { cursor: pointer; }
+    #stat { margin-left: auto; font-size: 13px; color: #9fb0d0; }
+    main { flex: 1; display: flex; min-height: 0; }
+    #map { flex: 1; background: #0b0f19; }
+    aside { width: 300px; overflow-y: auto; background: #101627; border-left: 1px solid #243049; }
+    aside .item { padding: 9px 12px; border-bottom: 1px solid #1d2740; cursor: pointer; font-size: 13px; display: flex; gap: 10px; align-items: center; }
+    aside .item:hover { background: #18213a; }
+    .mag { min-width: 42px; text-align: center; font-weight: 700; border-radius: 6px; padding: 4px 0; color: #0b0f19; }
+    .place { line-height: 1.35; }
+    .time { color: #8393b3; font-size: 12px; }
+    .legend { background: rgba(18,24,41,.9); color: #e8ecf4; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.7; }
+    .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; }
+    .pulse { border-radius: 50%; animation: pulse 1.8s ease-out infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,90,79,.7); } 100% { box-shadow: 0 0 0 28px rgba(255,90,79,0); } }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #18213a; color: #e8ecf4; }
+    .leaflet-popup-content a { color: #7cc4ff; }
+    @media (max-width: 720px) { main { flex-direction: column; } aside { width: 100%; height: 35%; border-left: 0; border-top: 1px solid #243049; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span>●</span> 실시간 지진 지도</h1>
+    <label>기간
+      <select id="feed">
+        <option value="all_hour">최근 1시간</option>
+        <option value="all_day" selected>최근 24시간</option>
+        <option value="2.5_week">최근 7일 (M2.5+)</option>
+        <option value="4.5_month">최근 30일 (M4.5+)</option>
+      </select>
+    </label>
+    <label>최소 규모
+      <select id="minMag">
+        <option value="0">전체</option><option value="2">M2+</option><option value="4">M4+</option><option value="5">M5+</option><option value="6">M6+</option>
+      </select>
+    </label>
+    <button id="refresh">새로고침</button>
+    <span id="stat">불러오는 중…</span>
+  </header>
+  <main>
+    <div id="map"></div>
+    <aside id="list"></aside>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map("map", { worldCopyJump: true, minZoom: 2 }).setView([20, 120], 2);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 12,
+      attribution: "&copy; OpenStreetMap, &copy; CARTO | 데이터: USGS",
+    }).addTo(map);
+
+    const layer = L.layerGroup().addTo(map);
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    const COLORS = [[6, "#ff2d55"], [5, "#ff6a3d"], [4, "#ffb020"], [3, "#ffe14d"], [2, "#7be06f"], [-9, "#5ec8ff"]];
+    const colorOf = (m) => (COLORS.find(([min]) => m >= min) || COLORS[COLORS.length - 1])[1];
+    const radiusOf = (m) => Math.max(3, Math.pow(Math.max(m, 0), 1.6) * 1.3);
+
+    const legend = L.control({ position: "bottomleft" });
+    legend.onAdd = () => {
+      const d = L.DomUtil.create("div", "legend");
+      d.innerHTML = "<b>규모</b><br>" + COLORS.slice().reverse().map(([min, c], i, a) =>
+        `<i style="background:${c}"></i>${min < 0 ? "~2" : min + "+"}`).join("<br>");
+      return d;
+    };
+    legend.addTo(map);
+
+    const ago = (t) => {
+      const m = Math.round((Date.now() - t) / 60000);
+      return m < 60 ? `${m}분 전` : m < 1440 ? `${Math.round(m / 60)}시간 전` : `${Math.round(m / 1440)}일 전`;
+    };
+
+    let quakes = [];
+
+    function render() {
+      const min = Number($("minMag").value);
+      const shown = quakes.filter((q) => (q.properties.mag ?? 0) >= min);
+      layer.clearLayers();
+      const markers = new Map();
+
+      shown.forEach((q) => {
+        const [lng, lat, depth] = q.geometry.coordinates;
+        const p = q.properties;
+        const mag = p.mag ?? 0;
+        const c = colorOf(mag);
+        const url = typeof p.url === "string" && p.url.startsWith("https://earthquake.usgs.gov/") ? p.url : null;
+        const popup = `<b>M${mag.toFixed(1)}</b> ${esc(p.place || "")}<br>${new Date(p.time).toLocaleString("ko-KR")} (${ago(p.time)})<br>깊이 ${Math.round(depth)}km` +
+          (url ? `<br><a href="${url}" target="_blank" rel="noopener">USGS 상세</a>` : "");
+
+        if (mag >= 5 && Date.now() - p.time < 86400000) {
+          const s = radiusOf(mag) * 2;
+          L.marker([lat, lng], { icon: L.divIcon({ className: "", iconSize: [s, s], iconAnchor: [s / 2, s / 2], html: `<div class="pulse" style="width:${s}px;height:${s}px;background:${c}"></div>` }) })
+            .bindPopup(popup).addTo(layer);
+        }
+        const m = L.circleMarker([lat, lng], { radius: radiusOf(mag), color: c, weight: 1, fillColor: c, fillOpacity: 0.45 })
+          .bindPopup(popup).addTo(layer);
+        markers.set(q.id, m);
+      });
+
+      const top = shown.slice().sort((a, b) => (b.properties.mag ?? 0) - (a.properties.mag ?? 0)).slice(0, 60);
+      $("list").innerHTML = top.map((q) => {
+        const p = q.properties;
+        return `<div class="item" data-id="${esc(q.id)}"><div class="mag" style="background:${colorOf(p.mag ?? 0)}">${(p.mag ?? 0).toFixed(1)}</div>` +
+          `<div class="place">${esc(p.place || "")}<div class="time">${ago(p.time)}</div></div></div>`;
+      }).join("");
+      $("list").onclick = (e) => {
+        const el = e.target.closest(".item");
+        const m = el && markers.get(el.dataset.id);
+        if (m) { map.setView(m.getLatLng(), 5); m.openPopup(); }
+      };
+
+      const strongest = top[0];
+      $("stat").textContent = `${shown.length}건` + (strongest ? ` · 최대 M${strongest.properties.mag.toFixed(1)}` : "");
+    }
+
+    async function load() {
+      $("stat").textContent = "불러오는 중…";
+      try {
+        const res = await fetch(`https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/${$("feed").value}.geojson`);
+        if (!res.ok) throw new Error(res.status);
+        quakes = (await res.json()).features;
+        render();
+      } catch (e) {
+        $("stat").textContent = "데이터를 불러오지 못했습니다";
+      }
+    }
+
+    $("feed").onchange = load;
+    $("minMag").onchange = render;
+    $("refresh").onclick = load;
+    load();
+    setInterval(load, 60000);
+  </script>
+</body>
+</html>

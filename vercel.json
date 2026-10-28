@@ -1,5 +1,6 @@
 {
   "functions": {
-    "api/find_spots.js": { "includeFiles": "jeju_spots.json" }
+    "api/find_spots.js": { "includeFiles": "jeju_spots.json" },
+    "api/chat.js": { "includeFiles": "jeju_spots.json", "maxDuration": 60 }
   }
 }

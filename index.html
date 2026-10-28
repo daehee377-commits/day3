@@ -3,148 +3,138 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>실시간 지진 지도</title>
+  <title>제주 날씨 맞춤 추천</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; height: 100vh; display: flex; flex-direction: column; background: #0b0f19; color: #e8ecf4; font-family: "Segoe UI", "Malgun Gothic", sans-serif; }
-    header { padding: 10px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; background: #121829; border-bottom: 1px solid #243049; }
-    h1 { font-size: 18px; margin: 0; }
-    h1 span { color: #ff5a4f; }
-    select, button { background: #1b2540; color: #e8ecf4; border: 1px solid #2f3d5f; border-radius: 6px; padding: 6px 10px; font-size: 14px; }
-    button { cursor: pointer; }
-    #stat { margin-left: auto; font-size: 13px; color: #9fb0d0; }
-    main { flex: 1; display: flex; min-height: 0; }
-    #map { flex: 1; background: #0b0f19; }
-    aside { width: 300px; overflow-y: auto; background: #101627; border-left: 1px solid #243049; }
-    aside .item { padding: 9px 12px; border-bottom: 1px solid #1d2740; cursor: pointer; font-size: 13px; display: flex; gap: 10px; align-items: center; }
-    aside .item:hover { background: #18213a; }
-    .mag { min-width: 42px; text-align: center; font-weight: 700; border-radius: 6px; padding: 4px 0; color: #0b0f19; }
-    .place { line-height: 1.35; }
-    .time { color: #8393b3; font-size: 12px; }
-    .legend { background: rgba(18,24,41,.9); color: #e8ecf4; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.7; }
-    .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; }
-    .pulse { border-radius: 50%; animation: pulse 1.8s ease-out infinite; }
-    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,90,79,.7); } 100% { box-shadow: 0 0 0 28px rgba(255,90,79,0); } }
-    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #18213a; color: #e8ecf4; }
-    .leaflet-popup-content a { color: #7cc4ff; }
-    @media (max-width: 720px) { main { flex-direction: column; } aside { width: 100%; height: 35%; border-left: 0; border-top: 1px solid #243049; } }
+    body { margin: 0; height: 100vh; display: flex; background: #f4f7fb; color: #1d2433; font-family: "Segoe UI", "Malgun Gothic", sans-serif; }
+    #chat { width: 420px; display: flex; flex-direction: column; background: #fff; border-right: 1px solid #dde3ee; }
+    header { padding: 14px 16px; border-bottom: 1px solid #e6ebf3; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    header p { margin: 0; font-size: 12px; color: #6b778f; }
+    #log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .msg { max-width: 92%; padding: 9px 12px; border-radius: 12px; line-height: 1.55; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+    .user { align-self: flex-end; background: #2f6bff; color: #fff; border-bottom-right-radius: 4px; }
+    .bot { align-self: flex-start; background: #eef2f9; border-bottom-left-radius: 4px; }
+    .tools { align-self: flex-start; display: flex; flex-wrap: wrap; gap: 5px; }
+    .tool { font-size: 11px; background: #fff4d6; color: #7a5a00; border: 1px solid #f0dca0; border-radius: 999px; padding: 2px 9px; }
+    .tool.w { background: #dff4ff; color: #04567a; border-color: #aedcf2; }
+    .err { background: #ffe9e9; color: #a02020; }
+    .chips { padding: 0 14px 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .chips button { font-size: 12px; background: #fff; border: 1px solid #cfd8e8; border-radius: 999px; padding: 5px 10px; cursor: pointer; color: #3a4a6b; }
+    .chips button:hover { background: #eef2f9; }
+    form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #e6ebf3; }
+    input { flex: 1; padding: 10px 12px; border: 1px solid #cfd8e8; border-radius: 8px; font-size: 14px; }
+    form button { padding: 0 16px; border: 0; border-radius: 8px; background: #2f6bff; color: #fff; font-size: 14px; cursor: pointer; }
+    form button:disabled { background: #9db6ee; cursor: default; }
+    #map { flex: 1; }
+    .dots span { animation: b 1s infinite; display: inline-block; }
+    .dots span:nth-child(2) { animation-delay: .15s; } .dots span:nth-child(3) { animation-delay: .3s; }
+    @keyframes b { 0%, 60%, 100% { transform: none; } 30% { transform: translateY(-4px); } }
+    @media (max-width: 800px) { body { flex-direction: column-reverse; } #chat { width: 100%; height: 60%; border-right: 0; } #map { height: 40%; flex: none; } }
   </style>
 </head>
 <body>
-  <header>
-    <h1><span>●</span> 실시간 지진 지도</h1>
-    <label>기간
-      <select id="feed">
-        <option value="all_hour">최근 1시간</option>
-        <option value="all_day" selected>최근 24시간</option>
-        <option value="2.5_week">최근 7일 (M2.5+)</option>
-        <option value="4.5_month">최근 30일 (M4.5+)</option>
-      </select>
-    </label>
-    <label>최소 규모
-      <select id="minMag">
-        <option value="0">전체</option><option value="2">M2+</option><option value="4">M4+</option><option value="5">M5+</option><option value="6">M6+</option>
-      </select>
-    </label>
-    <button id="refresh">새로고침</button>
-    <span id="stat">불러오는 중…</span>
-  </header>
-  <main>
-    <div id="map"></div>
-    <aside id="list"></aside>
-  </main>
+  <section id="chat">
+    <header>
+      <h1>🌴 제주 날씨 맞춤 추천</h1>
+      <p>에이전트가 날씨(Open-Meteo)와 관광지 목록을 직접 검색해서 추천합니다.</p>
+    </header>
+    <div id="log"></div>
+    <div class="chips" id="chips">
+      <button>이번 주말 서귀포 가려는데 어디 갈까?</button>
+      <button>비 오면 동쪽에서 뭐 하지?</button>
+      <button>내일 제주시 야외 코스 추천해줘</button>
+    </div>
+    <form id="f">
+      <input id="q" placeholder="예: 내일 서쪽에서 가볼 만한 곳" autocomplete="off" required maxlength="300">
+      <button id="send">보내기</button>
+    </form>
+  </section>
+  <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map("map", { worldCopyJump: true, minZoom: 2 }).setView([20, 120], 2);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 12,
-      attribution: "&copy; OpenStreetMap, &copy; CARTO | 데이터: USGS",
-    }).addTo(map);
-
-    const layer = L.layerGroup().addTo(map);
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-    const COLORS = [[6, "#ff2d55"], [5, "#ff6a3d"], [4, "#ffb020"], [3, "#ffe14d"], [2, "#7be06f"], [-9, "#5ec8ff"]];
-    const colorOf = (m) => (COLORS.find(([min]) => m >= min) || COLORS[COLORS.length - 1])[1];
-    const radiusOf = (m) => Math.max(3, Math.pow(Math.max(m, 0), 1.6) * 1.3);
+    const map = L.map("map").setView([33.38, 126.55], 9);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+    const layer = L.layerGroup().addTo(map);
 
-    const legend = L.control({ position: "bottomleft" });
-    legend.onAdd = () => {
-      const d = L.DomUtil.create("div", "legend");
-      d.innerHTML = "<b>규모</b><br>" + COLORS.slice().reverse().map(([min, c], i, a) =>
-        `<i style="background:${c}"></i>${min < 0 ? "~2" : min + "+"}`).join("<br>");
+    const history = [];
+
+    function add(cls, text) {
+      const d = document.createElement("div");
+      d.className = "msg " + cls;
+      d.textContent = text;
+      $("log").appendChild(d);
+      $("log").scrollTop = $("log").scrollHeight;
       return d;
-    };
-    legend.addTo(map);
-
-    const ago = (t) => {
-      const m = Math.round((Date.now() - t) / 60000);
-      return m < 60 ? `${m}분 전` : m < 1440 ? `${Math.round(m / 60)}시간 전` : `${Math.round(m / 1440)}일 전`;
-    };
-
-    let quakes = [];
-
-    function render() {
-      const min = Number($("minMag").value);
-      const shown = quakes.filter((q) => (q.properties.mag ?? 0) >= min);
-      layer.clearLayers();
-      const markers = new Map();
-
-      shown.forEach((q) => {
-        const [lng, lat, depth] = q.geometry.coordinates;
-        const p = q.properties;
-        const mag = p.mag ?? 0;
-        const c = colorOf(mag);
-        const url = typeof p.url === "string" && p.url.startsWith("https://earthquake.usgs.gov/") ? p.url : null;
-        const popup = `<b>M${mag.toFixed(1)}</b> ${esc(p.place || "")}<br>${new Date(p.time).toLocaleString("ko-KR")} (${ago(p.time)})<br>깊이 ${Math.round(depth)}km` +
-          (url ? `<br><a href="${url}" target="_blank" rel="noopener">USGS 상세</a>` : "");
-
-        if (mag >= 5 && Date.now() - p.time < 86400000) {
-          const s = radiusOf(mag) * 2;
-          L.marker([lat, lng], { icon: L.divIcon({ className: "", iconSize: [s, s], iconAnchor: [s / 2, s / 2], html: `<div class="pulse" style="width:${s}px;height:${s}px;background:${c}"></div>` }) })
-            .bindPopup(popup).addTo(layer);
-        }
-        const m = L.circleMarker([lat, lng], { radius: radiusOf(mag), color: c, weight: 1, fillColor: c, fillOpacity: 0.45 })
-          .bindPopup(popup).addTo(layer);
-        markers.set(q.id, m);
-      });
-
-      const top = shown.slice().sort((a, b) => (b.properties.mag ?? 0) - (a.properties.mag ?? 0)).slice(0, 60);
-      $("list").innerHTML = top.map((q) => {
-        const p = q.properties;
-        return `<div class="item" data-id="${esc(q.id)}"><div class="mag" style="background:${colorOf(p.mag ?? 0)}">${(p.mag ?? 0).toFixed(1)}</div>` +
-          `<div class="place">${esc(p.place || "")}<div class="time">${ago(p.time)}</div></div></div>`;
-      }).join("");
-      $("list").onclick = (e) => {
-        const el = e.target.closest(".item");
-        const m = el && markers.get(el.dataset.id);
-        if (m) { map.setView(m.getLatLng(), 5); m.openPopup(); }
-      };
-
-      const strongest = top[0];
-      $("stat").textContent = `${shown.length}건` + (strongest ? ` · 최대 M${strongest.properties.mag.toFixed(1)}` : "");
     }
 
-    async function load() {
-      $("stat").textContent = "불러오는 중…";
+    function showTools(calls) {
+      if (!calls.length) return;
+      const d = document.createElement("div");
+      d.className = "tools";
+      d.innerHTML = calls.map((c) => {
+        const args = Object.values(c.input || {}).join(", ");
+        return `<span class="tool ${c.name === "get_weather" ? "w" : ""}">🔧 ${esc(c.name)}(${esc(args)})</span>`;
+      }).join("");
+      $("log").appendChild(d);
+    }
+
+    function showMap(spots, reply) {
+      layer.clearLayers();
+      const pts = [];
+      spots.forEach((s) => {
+        if (typeof s.lat !== "number") return;
+        const picked = reply.includes(s.name);
+        L.circleMarker([s.lat, s.lng], {
+          radius: picked ? 10 : 6, color: picked ? "#d62839" : "#6b86c9", weight: 2,
+          fillColor: picked ? "#ff4d5e" : "#9db6ee", fillOpacity: picked ? 0.9 : 0.6,
+        }).bindPopup(`<b>${esc(s.name)}</b><br>${esc(s.areas)} · ${s.indoor ? "실내" : "야외"}<br>${esc(s.description)}${picked ? "<br>⭐ 추천" : ""}`).addTo(layer);
+        pts.push([s.lat, s.lng]);
+      });
+      if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 12 });
+    }
+
+    async function ask(text) {
+      history.push({ role: "user", content: text });
+      add("user", text);
+      $("chips").style.display = "none";
+      $("send").disabled = true;
+      const wait = add("bot", "");
+      wait.innerHTML = '<span class="dots"><span>●</span><span>●</span><span>●</span></span> 날씨와 관광지를 검색하는 중…';
       try {
-        const res = await fetch(`https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/${$("feed").value}.geojson`);
-        if (!res.ok) throw new Error(res.status);
-        quakes = (await res.json()).features;
-        render();
+        const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: history }) });
+        const data = await res.json();
+        wait.remove();
+        if (!res.ok) throw new Error(data.error || res.status);
+        showTools(data.toolCalls);
+        add("bot", data.reply);
+        history.push({ role: "assistant", content: data.reply });
+        showMap(data.spots, data.reply);
       } catch (e) {
-        $("stat").textContent = "데이터를 불러오지 못했습니다";
+        wait.remove();
+        history.pop();
+        add("bot err", "오류: " + e.message);
+      } finally {
+        $("send").disabled = false;
+        $("q").focus();
       }
     }
 
-    $("feed").onchange = load;
-    $("minMag").onchange = render;
-    $("refresh").onclick = load;
-    load();
-    setInterval(load, 60000);
+    $("f").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const t = $("q").value.trim();
+      if (!t) return;
+      $("q").value = "";
+      ask(t);
+    });
+    $("chips").addEventListener("click", (e) => { if (e.target.tagName === "BUTTON") ask(e.target.textContent); });
+
+    add("bot", "안녕하세요! 가고 싶은 지역이나 날짜, 분위기를 말씀해 주세요. 날씨를 확인해서 실내/야외를 골라 추천해 드릴게요.");
   </script>
 </body>
 </html>
