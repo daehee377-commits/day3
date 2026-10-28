@@ -20,6 +20,9 @@
     .tool { font-size: 11px; background: #fff4d6; color: #7a5a00; border: 1px solid #f0dca0; border-radius: 999px; padding: 2px 9px; }
     .tool.w { background: #dff4ff; color: #04567a; border-color: #aedcf2; }
     .err { background: #ffe9e9; color: #a02020; }
+    details.raw { align-self: stretch; font-size: 12px; background: #1e2433; color: #d6e2ff; border-radius: 8px; padding: 6px 10px; }
+    details.raw summary { cursor: pointer; color: #9fc0ff; }
+    details.raw pre { margin: 8px 0 2px; max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
     .chips { padding: 0 14px 8px; display: flex; flex-wrap: wrap; gap: 6px; }
     .chips button { font-size: 12px; background: #fff; border: 1px solid #cfd8e8; border-radius: 999px; padding: 5px 10px; cursor: pointer; color: #3a4a6b; }
     .chips button:hover { background: #eef2f9; }
@@ -73,6 +76,23 @@
       return d;
     }
 
+    // 제미나이가 보낸 응답을 가공 없이 펼쳐 볼 수 있게 한다. 콘솔(F12)에도 객체로 출력한다.
+    function showRaw(data) {
+      (data.debug || []).forEach((d, i) => {
+        console.log(`[제미나이 원본 응답 #${i + 1}] 모델=${d.model} HTTP ${d.status}`, d.raw);
+        const box = document.createElement("details");
+        box.className = "raw";
+        const sum = document.createElement("summary");
+        sum.textContent = `제미나이 원본 응답 #${i + 1} · ${d.model} · HTTP ${d.status}`;
+        const pre = document.createElement("pre");
+        pre.textContent = typeof d.raw === "string" ? d.raw : JSON.stringify(d.raw, null, 2);
+        box.append(sum, pre);
+        $("log").appendChild(box);
+      });
+      (data.toolResults || []).forEach((t) => console.log(`[도구 실행 결과] ${t.name}`, t.input, t.output));
+      $("log").scrollTop = $("log").scrollHeight;
+    }
+
     function showTools(calls) {
       if (!calls.length) return;
       const d = document.createElement("div");
@@ -106,9 +126,14 @@
       $("send").disabled = true;
       const wait = add("bot", "");
       wait.innerHTML = '<span class="dots"><span>●</span><span>●</span><span>●</span></span> 날씨와 관광지를 검색하는 중…';
+      let data;
       try {
         const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: history }) });
-        const data = await res.json();
+        const rawText = await res.text();
+        console.log("[서버 응답 원문] HTTP", res.status, rawText);
+        try { data = JSON.parse(rawText); } catch { throw new Error(`서버가 JSON 이 아닌 응답을 보냈습니다 (HTTP ${res.status}). 콘솔의 원문을 확인하세요.`); }
+        console.log("[서버 응답 객체]", data);
+        showRaw(data);
         wait.remove();
         if (!res.ok) throw new Error(data.error || res.status);
         showTools(data.toolCalls);

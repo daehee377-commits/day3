@@ -22,7 +22,7 @@ const functionDeclarations = toolDefinitions.map((t) => ({
 const MODELS = [...new Set([process.env.GEMINI_MODEL, "gemini-3.8-flash", "gemini-flash-latest"].filter(Boolean))];
 let workingModel = null;
 
-async function callGemini(contents) {
+async function callGemini(contents, debug) {
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: SYSTEM.replace("{TODAY}", new Date().toISOString().slice(0, 10)) }] },
     contents,
@@ -38,7 +38,12 @@ async function callGemini(contents) {
       headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
       body,
     });
-    const data = await res.json();
+    const rawText = await res.text();
+    let data;
+    let raw = rawText; // JSON 이 아니면 원문 문자열 그대로
+    try { data = JSON.parse(rawText); raw = data; } catch { data = { error: { message: rawText.slice(0, 500) } }; }
+    // 제미나이가 보낸 응답을 가공하지 않고 그대로 담는다.
+    debug.push({ model, status: res.status, raw });
     if (res.ok) {
       workingModel = model;
       return data;
@@ -67,11 +72,13 @@ module.exports = async (req, res) => {
   }
 
   const toolCalls = [];
+  const debug = [];
+  const toolResults = [];
   const spots = new Map();
 
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
-      const data = await callGemini(contents);
+      const data = await callGemini(contents, debug);
       const content = data.candidates?.[0]?.content;
       if (!content?.parts?.length) {
         const why = data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason || "빈 응답";
@@ -82,7 +89,7 @@ module.exports = async (req, res) => {
       const calls = content.parts.filter((p) => p.functionCall);
       if (!calls.length) {
         const text = content.parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("\n");
-        return res.status(200).json({ reply: text, toolCalls, spots: [...spots.values()] });
+        return res.status(200).json({ reply: text, toolCalls, spots: [...spots.values()], debug, toolResults });
       }
 
       const responses = await Promise.all(
@@ -91,14 +98,15 @@ module.exports = async (req, res) => {
           toolCalls.push({ name: fc.name, input: args });
           const handler = toolHandlers[fc.name];
           const output = handler ? await handler(args) : { error: `알 수 없는 도구: ${fc.name}` };
+          toolResults.push({ name: fc.name, input: args, output });
           if (fc.name === "find_spots" && output.spots) output.spots.forEach((s) => spots.set(s.name, s));
           return { functionResponse: { name: fc.name, response: output } };
         })
       );
       contents.push({ role: "user", parts: responses });
     }
-    res.status(200).json({ reply: "도구 호출이 너무 길어져 중단했습니다. 질문을 조금 더 구체적으로 해주세요.", toolCalls, spots: [...spots.values()] });
+    res.status(200).json({ reply: "도구 호출이 너무 길어져 중단했습니다. 질문을 조금 더 구체적으로 해주세요.", toolCalls, spots: [...spots.values()], debug, toolResults });
   } catch (e) {
-    res.status(502).json({ error: e.message });
+    res.status(502).json({ error: e.message, debug, toolResults });
   }
 };
