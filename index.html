@@ -34,6 +34,10 @@
     .dots span { animation: b 1s infinite; display: inline-block; }
     .dots span:nth-child(2) { animation-delay: .15s; } .dots span:nth-child(3) { animation-delay: .3s; }
     @keyframes b { 0%, 60%, 100% { transform: none; } 30% { transform: translateY(-4px); } }
+    .games { display: flex; gap: 8px; margin-top: 10px; }
+    .games a { flex: 1; text-align: center; text-decoration: none; font-size: 13px; font-weight: 700; color: #fff; padding: 8px 6px; border-radius: 8px; background: linear-gradient(#ffb02a, #ff6a1a); }
+    .games a.race { background: linear-gradient(#3aa0ff, #1a5ae0); }
+    .games a:hover { filter: brightness(1.1); }
     @media (max-width: 800px) { body { flex-direction: column-reverse; } #chat { width: 100%; height: 60%; border-right: 0; } #map { height: 40%; flex: none; } }
   </style>
 </head>
@@ -42,6 +46,10 @@
     <header>
       <h1>🌴 제주 날씨 맞춤 추천</h1>
       <p>에이전트가 날씨(Open-Meteo)와 관광지 목록을 직접 검색해서 추천합니다.</p>
+      <div class="games">
+        <a href="jeju_citrus_game.html">🍊 감귤 수확 게임</a>
+        <a href="racing3d.html" class="race">🏎 3D 레이싱 (1~2인)</a>
+      </div>
     </header>
     <div id="log"></div>
     <div class="chips" id="chips">
