@@ -38,12 +38,23 @@
     .games a { flex: 1; text-align: center; text-decoration: none; font-size: 13px; font-weight: 700; color: #fff; padding: 8px 6px; border-radius: 8px; background: linear-gradient(#ffb02a, #ff6a1a); }
     .games a.race { background: linear-gradient(#3aa0ff, #1a5ae0); }
     .games a:hover { filter: brightness(1.1); }
+    .authbar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 6px; font-size: 12px; color: #6b778f; min-height: 28px; }
+    .authbar button { font-size: 12px; padding: 5px 10px; border: 1px solid #cfd8e8; border-radius: 999px; background: #fff; cursor: pointer; color: #3a4a6b; }
+    .authbar button.primary { background: #2f6bff; border-color: #2f6bff; color: #fff; }
+    dialog#authDlg { border: 1px solid #dde3ee; border-radius: 12px; width: min(92vw, 340px); padding: 20px; }
+    dialog#authDlg::backdrop { background: rgba(0, 0, 0, .45); }
+    #authForm { flex-direction: column; border: 0; padding: 0; display: flex; gap: 10px; }
+    #authForm h2 { margin: 0 0 4px; font-size: 18px; }
+    #authForm button { padding: 10px; }
+    #authForm .link { background: none; color: #2f6bff; text-decoration: underline; padding: 4px; }
+    #authMsg { margin: 0; min-height: 1.2em; font-size: 13px; color: #d62839; }
     @media (max-width: 800px) { body { flex-direction: column-reverse; } #chat { width: 100%; height: 60%; border-right: 0; } #map { height: 40%; flex: none; } }
   </style>
 </head>
 <body>
   <section id="chat">
     <header>
+      <div class="authbar" id="authArea"></div>
       <h1>🌴 제주 날씨 맞춤 추천</h1>
       <p>에이전트가 날씨(Open-Meteo)와 관광지 목록을 직접 검색해서 추천합니다.</p>
       <div class="games">
@@ -64,7 +75,20 @@
   </section>
   <div id="map"></div>
 
+  <dialog id="authDlg">
+    <form id="authForm" method="dialog">
+      <h2 id="authTitle">로그인</h2>
+      <input id="email" type="email" placeholder="이메일" required autocomplete="email">
+      <input id="pw" type="password" placeholder="비밀번호 (6자 이상)" minlength="6" required autocomplete="current-password">
+      <p id="authMsg"></p>
+      <button id="authSubmit" type="submit">로그인</button>
+      <button id="authSwitch" type="button" class="link">계정이 없나요? 회원가입</button>
+      <button id="authClose" type="button" class="link">닫기</button>
+    </form>
+  </dialog>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -183,6 +207,59 @@
       ask(t);
     });
     $("chips").addEventListener("click", (e) => { if (e.target.tagName === "BUTTON") ask(e.target.textContent); });
+
+    /* ---------- Supabase 로그인 / 회원가입 ---------- */
+    let sb = null, authMode = "login";
+
+    function renderAuth(user) {
+      const area = $("authArea");
+      if (!sb) { area.textContent = "로그인 설정이 없습니다"; return; }
+      area.innerHTML = user
+        ? `<span>${esc(user.email)}</span><button id="logoutBtn">로그아웃</button>`
+        : '<button id="loginBtn" class="primary">로그인 / 회원가입</button>';
+    }
+
+    function setMode(m) {
+      authMode = m;
+      const login = m === "login";
+      $("authTitle").textContent = login ? "로그인" : "회원가입";
+      $("authSubmit").textContent = login ? "로그인" : "가입하기";
+      $("authSwitch").textContent = login ? "계정이 없나요? 회원가입" : "이미 계정이 있나요? 로그인";
+      $("pw").autocomplete = login ? "current-password" : "new-password";
+      $("authMsg").textContent = "";
+    }
+
+    async function initAuth() {
+      try {
+        const res = await fetch("/api/config");
+        const cfg = await res.json();
+        if (cfg.url && cfg.anonKey) sb = supabase.createClient(cfg.url, cfg.anonKey);
+      } catch (e) { console.warn("[auth] 설정을 불러오지 못했습니다", e); }
+      renderAuth(null);
+      if (!sb) return;
+      sb.auth.onAuthStateChange((_ev, session) => renderAuth(session && session.user));
+      const { data } = await sb.auth.getSession();
+      renderAuth(data.session && data.session.user);
+    }
+
+    $("authArea").addEventListener("click", async (e) => {
+      if (e.target.id === "loginBtn") { setMode("login"); $("authDlg").showModal(); }
+      if (e.target.id === "logoutBtn") await sb.auth.signOut();
+    });
+    $("authSwitch").onclick = () => setMode(authMode === "login" ? "signup" : "login");
+    $("authClose").onclick = () => $("authDlg").close();
+    $("authForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = $("email").value.trim(), password = $("pw").value, msg = $("authMsg");
+      msg.textContent = "처리 중...";
+      const { data, error } = authMode === "login"
+        ? await sb.auth.signInWithPassword({ email, password })
+        : await sb.auth.signUp({ email, password });
+      if (error) { msg.textContent = error.message; return; }
+      if (authMode === "signup" && !data.session) { msg.textContent = "가입 완료! 메일함의 인증 링크를 눌러 주세요."; return; }
+      $("authDlg").close();
+    });
+    initAuth();
 
     add("bot", "안녕하세요! 가고 싶은 지역이나 날짜, 분위기를 말씀해 주세요. 날씨를 확인해서 실내/야외를 골라 추천해 드릴게요.");
   </script>

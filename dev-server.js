@@ -23,6 +23,13 @@ http
       return send(res, result.error ? 400 : 200, "application/json", JSON.stringify(result));
     }
 
+    if (url.pathname === "/api/config") {
+      return send(res, 200, "application/json", JSON.stringify({
+        url: process.env.SUPABASE_URL || "",
+        anonKey: process.env.SUPABASE_ANON_KEY || "",
+      }));
+    }
+
     if (url.pathname === "/" || url.pathname === "/index.html") {
       return send(res, 200, "text/html", fs.readFileSync(path.join(ROOT, "index.html"), "utf8"));
     }
