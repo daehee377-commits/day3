@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>f4.html 코드 애니메이션</title>
+<style>
+  :root{
+    --bg:#1e1f24; --panel:#2a2c33; --line:#3a3d46; --text:#e8e8ea; --muted:#9a9ca6;
+    --hl:#3d5afe33; --hlbar:#5c7cff; --ok:#4cd19a; --warn:#ffb74d; --err:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:20px;background:var(--bg);color:var(--text);font-family:"Segoe UI","Malgun Gothic",sans-serif}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:800px){.grid{grid-template-columns:1fr}}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .box h2{font-size:13px;color:var(--muted);margin:0 0 10px;font-weight:600;letter-spacing:.5px}
+  pre{margin:0;font-family:Consolas,monospace;font-size:15px}
+  .code div{padding:2px 8px 2px 10px;border-left:4px solid transparent;white-space:pre;transition:background .25s}
+  .code div.on{background:var(--hl);border-left-color:var(--hlbar)}
+  .code .n{color:var(--muted);display:inline-block;width:26px}
+  .arr{display:flex;gap:8px;flex-wrap:wrap}
+  .cell{width:64px;height:56px;border:2px solid var(--line);border-radius:8px;text-align:center;font-family:Consolas,monospace;font-size:20px;padding-top:6px;position:relative;transition:all .3s}
+  .cell small{display:block;font-size:11px;color:var(--muted);margin-top:-2px}
+  .cell.cur{border-color:var(--hlbar);background:var(--hl);transform:translateY(-6px)}
+  .cell.done{border-color:var(--ok);color:var(--ok)}
+  .vars{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+  .var{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;text-align:center}
+  .var b{display:block;font-size:12px;color:var(--muted);font-weight:600}
+  .var span{font-family:Consolas,monospace;font-size:22px;transition:color .3s}
+  .var.flash span{color:var(--warn)}
+  .desc{min-height:70px;font-size:16px;line-height:1.5}
+  .console{font-family:Consolas,monospace;font-size:15px;min-height:90px;background:#111;border-radius:8px;padding:10px}
+  .console div{padding:1px 0}
+  .console .err{color:var(--err)}
+  .ctrl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px}
+  button{background:var(--hlbar);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:14px;cursor:pointer}
+  button.sec{background:var(--line)}
+  button:disabled{opacity:.4;cursor:default}
+  label{font-size:14px;color:var(--muted)}
+  .progress{height:6px;background:var(--line);border-radius:3px;margin-top:14px;overflow:hidden}
+  .progress i{display:block;height:100%;background:var(--hlbar);width:0;transition:width .3s}
+  .note{margin-top:14px;font-size:13px;color:var(--warn);background:#ffb74d18;border:1px solid #ffb74d55;border-radius:8px;padding:10px 12px;line-height:1.5}
+</style>
+</head>
+<body>
+<h1>f4.html 코드 애니메이션</h1>
+<div class="sub">배열의 값을 하나씩 꺼내 f(v)=v*3 을 계산해 sum에 누적하는 과정을 단계별로 보여줍니다.</div>
+
+<div class="grid">
+  <div class="box">
+    <h2>코드</h2>
+    <pre class="code" id="code"></pre>
+  </div>
+  <div>
+    <div class="box">
+      <h2>설명</h2>
+      <div class="desc" id="desc"></div>
+      <div class="progress"><i id="bar"></i></div>
+    </div>
+    <div class="box" style="margin-top:16px">
+      <h2>배열 arr 와 변수</h2>
+      <div class="arr" id="arr"></div>
+      <div class="vars">
+        <div class="var" id="vv"><b>v (꺼낸 값)</b><span>-</span></div>
+        <div class="var" id="vf"><b>f(v) = v*3</b><span>-</span></div>
+        <div class="var" id="vs"><b>sum (합계)</b><span>-</span></div>
+      </div>
+    </div>
+    <div class="box" style="margin-top:16px">
+      <h2>콘솔 (F12)</h2>
+      <div class="console" id="con"></div>
+    </div>
+  </div>
+</div>
+
+<div class="ctrl">
+  <button id="prev" class="sec">◀ 이전</button>
+  <button id="play">▶ 자동 재생</button>
+  <button id="next">다음 ▶</button>
+  <button id="reset" class="sec">처음으로</button>
+  <label>속도 <input type="range" id="speed" min="400" max="2500" value="1400" step="100"></label>
+  <label><input type="checkbox" id="bug"> 원본 코드(대문자 <code>V</code> 오타) 실행해 보기</label>
+</div>
+
+<div class="note">
+  ⚠ 원본 f4.html 14번째 줄은 <code>'v='+V</code> 로 <b>대문자 V</b>를 썼습니다. 변수 <code>V</code>는 없어서
+  <code>ReferenceError: V is not defined</code> 오류가 나고, 반복이 멈춰 sum이 출력되지 않습니다.
+  이 애니메이션은 기본으로 소문자 <code>v</code>로 고친 코드를 보여줍니다. 위 체크박스로 원본의 오류도 볼 수 있습니다.
+</div>
+
+<script>
+  const codeLines = [
+    "<!-- 앞부분(head 등) 생략 -->",
+    "const f=(i) => i*3",
+    "let arr =[10,20,30]",
+    "let sum=0",
+    "for (const v of arr) {",
+    "    console.log('v='+v)",
+    "    sum = sum + f(v)",
+    "}",
+    "console.log(sum)"
+  ];
+  // 코드 줄 번호(0부터)
+  const L = {f:1, arr:2, sum:3, loop:4, log:5, add:6, end:7, out:8};
+
+  function build(buggy){
+    const steps = [];
+    const st = {cur:-1, v:null, fv:null, sum:null, con:[], done:[], defined:{}};
+    const push = (line, desc, extra={}) => {
+      steps.push(Object.assign({
+        line, desc, cur:st.cur, v:st.v, fv:st.fv, sum:st.sum,
+        con:st.con.slice(), done:st.done.slice(), showArr:!!st.defined.arr, flash:null, err:false
+      }, extra));
+    };
+    const arr = [10,20,30];
+
+    push(L.f, "화살표 함수 f를 만듭니다. 숫자 i를 받아 <b>i*3</b>을 돌려주는 함수입니다. 지금은 만들기만 하고 실행하지 않습니다.");
+    st.defined.arr = true; push(L.arr, "배열 arr에 숫자 3개 <b>[10, 20, 30]</b>를 저장합니다.");
+    st.sum = 0; push(L.sum, "합계를 담을 변수 sum을 <b>0</b>으로 시작합니다.", {flash:"s"});
+
+    for(let i=0;i<arr.length;i++){
+      const v = arr[i];
+      st.cur = i; st.v = v; st.fv = null;
+      push(L.loop, `for...of 반복: arr에서 <b>${i+1}번째 값 ${v}</b>를 꺼내 v에 넣습니다.`, {flash:"v"});
+      if(buggy){
+        st.con.push({t:"ReferenceError: V is not defined", err:true});
+        push(L.log, "여기서 <b>대문자 V</b>를 읽으려는데 그런 변수는 없습니다. 오류가 나서 <b>프로그램이 멈춥니다.</b> sum은 끝내 출력되지 않습니다.", {err:true});
+        return steps;
+      }
+      st.con.push({t:"v="+v});
+      push(L.log, `콘솔에 <b>'v='</b>와 v를 이어 붙여 <b>v=${v}</b>를 출력합니다.`);
+      st.fv = v*3;
+      const old = st.sum; st.sum = old + st.fv;
+      push(L.add, `f(${v})는 ${v}*3 = <b>${st.fv}</b>. sum = ${old} + ${st.fv} = <b>${st.sum}</b>`, {flash:"s"});
+      st.done.push(i);
+    }
+    st.cur = -1; st.v = null; st.fv = null;
+    push(L.loop, "arr에서 더 꺼낼 값이 없어서 반복을 끝냅니다.");
+    st.con.push({t:String(st.sum)});
+    push(L.out, `최종 합계 <b>${st.sum}</b>를 콘솔에 출력합니다. (30 + 60 + 90)`, {flash:"s"});
+    return steps;
+  }
+
+  let steps = build(false), idx = 0, timer = null;
+  const $ = id => document.getElementById(id);
+
+  function render(){
+    const s = steps[idx];
+    $("code").innerHTML = codeLines.map((t,i)=>
+      `<div class="${i===s.line?'on':''}"><span class="n">${i===0?'':i+8}</span>${t.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>`).join("");
+    $("desc").innerHTML = s.desc;
+    $("bar").style.width = ((idx+1)/steps.length*100)+"%";
+    $("arr").innerHTML = s.showArr ? [10,20,30].map((n,i)=>
+      `<div class="cell ${i===s.cur?'cur':''} ${s.done.includes(i)?'done':''}">${n}<small>arr[${i}]</small></div>`).join("") : "<span style='color:var(--muted)'>아직 없음</span>";
+    const set = (id,val,flash)=>{const e=$(id);e.querySelector("span").textContent = val===null?"-":val; e.classList.toggle("flash",!!flash);};
+    set("vv", s.v, s.flash==="v");
+    set("vf", s.fv, false);
+    set("vs", s.sum, s.flash==="s");
+    $("con").innerHTML = s.con.map(c=>`<div class="${c.err?'err':''}">&gt; ${c.t}</div>`).join("");
+    $("prev").disabled = idx===0;
+    $("next").disabled = idx===steps.length-1;
+    if(idx===steps.length-1) stop();
+  }
+  function stop(){ if(timer){clearInterval(timer);timer=null;} $("play").textContent="▶ 자동 재생"; }
+  function play(){
+    if(timer){stop();return;}
+    if(idx===steps.length-1) idx=0;
+    $("play").textContent="⏸ 일시정지"; render();
+    timer = setInterval(()=>{ if(idx<steps.length-1){idx++;render();} else stop(); }, +$("speed").value);
+  }
+  $("next").onclick = ()=>{ if(idx<steps.length-1){idx++;render();} };
+  $("prev").onclick = ()=>{ if(idx>0){idx--;render();} };
+  $("reset").onclick = ()=>{ stop(); idx=0; render(); };
+  $("play").onclick = play;
+  $("speed").onchange = ()=>{ if(timer){stop();play();} };
+  $("bug").onchange = e=>{ stop(); steps = build(e.target.checked); idx=0; render(); };
+  render();
+</script>
+</body>
+</html>

@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI는 어떻게 말을 할까? - 트랜스포머 쉽게 보기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fff8e7; --ink: #3b3350; --sub: #7a7092; --card: #ffffff;
+    --pink: #ff8fab; --blue: #6cb8ff; --green: #5fd49a; --yellow: #ffd45e; --purple: #b28dff; --orange: #ff9f5a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font-family: "Jua", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+         display: flex; flex-direction: column; min-height: 100vh; overflow-x: hidden; }
+  header { text-align: center; padding: 14px 16px 4px; }
+  header .step { color: var(--sub); font-size: .95rem; }
+  header h1 { margin: 2px 0 0; font-size: clamp(1.4rem, 4.5vw, 2.1rem); }
+  #stage { flex: 1; position: relative; width: 100%; max-width: 900px; margin: 8px auto; padding: 8px 16px; min-height: 360px;
+           display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+  #caption { max-width: 820px; margin: 0 auto; padding: 14px 22px; background: var(--card); border-radius: 22px;
+             border: 3px dashed var(--yellow); font-size: clamp(1.05rem, 3.2vw, 1.4rem); text-align: center; line-height: 1.55; min-height: 4.2em;
+             display: flex; align-items: center; justify-content: center; width: calc(100% - 32px); }
+  nav { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 12px 12px 20px; }
+  button { font-family: inherit; font-size: 1.1rem; border: 0; border-radius: 999px; padding: 10px 22px; cursor: pointer;
+           background: var(--purple); color: #fff; box-shadow: 0 4px 0 rgba(0,0,0,.15); }
+  button:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,.15); }
+  button.ghost { background: #fff; color: var(--ink); border: 2px solid #e6dcc0; box-shadow: none; padding: 8px 16px; }
+  button.ghost.on { background: var(--green); color: #fff; border-color: var(--green); }
+  button:disabled { opacity: .35; cursor: default; }
+  .dots { display: flex; gap: 8px; }
+  .dots i { width: 12px; height: 12px; border-radius: 50%; background: #e6dcc0; cursor: pointer; display: block; }
+  .dots i.on { background: var(--purple); transform: scale(1.3); }
+
+  .row { display: flex; align-items: center; gap: 14px; justify-content: center; }
+  .robot { font-size: clamp(3.2rem, 11vw, 5rem); animation: bob 2s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-8px) rotate(-3deg); } }
+  .bubble { background: #fff; border: 3px solid var(--blue); border-radius: 20px; padding: 10px 18px; font-size: clamp(1.1rem, 3.5vw, 1.5rem); position: relative; }
+  .bubble::before { content: ""; position: absolute; left: -14px; top: 50%; margin-top: -9px; border: 9px solid transparent; border-right: 14px solid var(--blue); border-left: 0; }
+
+  .sent, .toks { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: flex-start; }
+  .tk { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 16px; border-radius: 16px;
+        background: #fff; border: 3px solid var(--c, var(--blue)); font-size: clamp(1.15rem, 4vw, 1.9rem);
+        animation: pop .4s cubic-bezier(.3,1.6,.5,1) both; position: relative; }
+  .tk.q { border-style: dashed; color: var(--sub); animation: pop .4s both, blink 1s infinite .5s; }
+  .tk.ok { background: #e6fff3; border-color: var(--green); border-style: solid; animation: pop .4s both; }
+  @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  .bars { display: flex; flex-direction: column; gap: 8px; width: min(560px, 100%); }
+  .bar { display: flex; align-items: center; gap: 10px; font-size: clamp(1rem, 3.2vw, 1.3rem); }
+  .bar .lab { width: 5.2em; text-align: right; }
+  .bar .track { flex: 1; height: 26px; background: #f0e9d6; border-radius: 13px; overflow: hidden; }
+  .bar .fill { height: 100%; width: 0; border-radius: 13px; background: var(--c, var(--pink)); transition: width 1s cubic-bezier(.2,.8,.3,1); }
+  .bar .pct { width: 3.4em; font-size: .95em; color: var(--sub); }
+  .bar.win .lab { color: var(--green); }
+
+  .star { position: absolute; pointer-events: none; font-size: 1.6rem; animation: fly 1.2s ease-out forwards; }
+  @keyframes fly { to { transform: translate(var(--dx), var(--dy)) rotate(360deg); opacity: 0; } }
+
+  /* 2: split + numbers + map */
+  .toks.merge { gap: 0; }
+  .toks .tk { transition: all .6s ease; }
+  .toks.merge .tk { padding: 10px 2px; border-color: transparent; background: #fff6cc; border-radius: 4px; }
+  .toks.merge .tk:first-child { border-radius: 16px 4px 4px 16px; padding-left: 14px; }
+  .toks.merge .tk:last-child { border-radius: 4px 16px 16px 4px; padding-right: 14px; }
+  .num { font-size: .55em; color: var(--sub); opacity: 0; transition: opacity .6s; font-family: monospace; }
+  .num.show { opacity: 1; }
+  .map { position: relative; width: min(560px, 100%); height: 230px; background: #fff; border: 3px solid #e6dcc0; border-radius: 22px; }
+  .map span { position: absolute; font-size: 2.2rem; transition: all 1.8s cubic-bezier(.4,0,.2,1); transform: translate(-50%, -50%); text-align: center; line-height: 1; }
+  .map small { display: block; font-size: .8rem; color: var(--sub); margin-top: 2px; font-family: inherit; }
+  .map .zone { position: absolute; border-radius: 50%; opacity: 0; transition: opacity 1s; }
+  .map .zone.show { opacity: .25; }
+
+  /* 3: attention */
+  .hint { color: var(--sub); font-size: 1rem; }
+  .attn { position: relative; width: 100%; padding-top: 170px; }
+  .attn svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  .attn .toks { position: relative; gap: 8px; }
+  .attn .tk { cursor: pointer; padding: 10px 12px; font-size: clamp(1rem, 3.8vw, 1.7rem); }
+  .attn .tk.src { background: #fff4cf; border-color: var(--orange); transform: scale(1.08); }
+  .attn .tk .pct { font-size: .55em; color: var(--sub); min-height: 1.2em; }
+  .attn path { fill: none; stroke: var(--purple); stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw .8s ease forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  .torch { position: absolute; left: 50%; transform: translateX(-50%) rotate(-45deg); font-size: 1.8rem; }
+  .attn { padding-bottom: 44px; }
+
+  /* 4: layers */
+  .tower { display: flex; flex-direction: column-reverse; gap: 8px; width: min(560px, 100%); }
+  .layer { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: #f3ecdb; border-radius: 16px; transition: all .5s; border: 3px solid transparent; }
+  .layer .nm { flex: 1; font-size: clamp(.95rem, 3vw, 1.15rem); color: var(--sub); }
+  .layer .balls { display: flex; gap: 6px; }
+  .layer .balls i { width: 22px; height: 22px; border-radius: 50%; background: #d8cfb6; transition: all .5s; display: block; }
+  .layer.lit { background: #fff; border-color: var(--c); }
+  .layer.lit .nm { color: var(--ink); }
+  .layer.lit .balls i { background: var(--c); box-shadow: 0 0 12px var(--c); transform: scale(1.2); }
+  .out { opacity: 0; transition: opacity .6s; }
+  .out.show { opacity: 1; }
+
+  /* 5: generation */
+  .story { font-size: clamp(1.4rem, 5vw, 2.3rem); min-height: 1.6em; text-align: center; }
+  .story .w { display: inline-block; animation: pop .4s cubic-bezier(.3,1.6,.5,1) both; background: #fff; border: 3px solid var(--green); border-radius: 14px; padding: 2px 12px; margin: 3px; }
+  .cands { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; min-height: 56px; }
+  .cand { background: #fff; border: 3px solid #e6dcc0; border-radius: 14px; padding: 6px 14px; font-size: clamp(1rem, 3.5vw, 1.3rem); transition: all .3s; }
+  .cand.pick { border-color: var(--green); background: #e6fff3; transform: scale(1.15); }
+  .dice { font-size: 2.4rem; min-height: 1.3em; }
+
+  /* 6: learning */
+  .learn { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(580px, 100%); }
+  .books { font-size: 2rem; letter-spacing: 4px; min-height: 1.3em; }
+  .quiz { font-size: clamp(1.15rem, 4vw, 1.7rem); background: #fff; border-radius: 16px; padding: 10px 20px; border: 3px solid var(--blue); }
+  .guess { font-size: clamp(1.1rem, 3.8vw, 1.6rem); min-height: 1.6em; }
+  .meter { width: 100%; }
+  .meter .lbl { font-size: .95rem; color: var(--sub); margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .meter .track { height: 28px; background: #f0e9d6; border-radius: 14px; overflow: hidden; }
+  .meter .fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--orange), var(--green)); border-radius: 14px; transition: width 1.2s ease; }
+
+  /* 7: recap */
+  .recap { display: flex; flex-direction: column; gap: 10px; width: min(560px, 100%); }
+  .rc { display: flex; align-items: center; gap: 14px; background: #fff; border-radius: 18px; padding: 10px 16px; border: 3px solid var(--c); font-size: clamp(1rem, 3.4vw, 1.3rem); animation: pop .5s both; }
+  .rc b { font-size: 1.8rem; }
+  .brands { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .brands span { background: var(--purple); color: #fff; border-radius: 999px; padding: 6px 16px; font-size: 1.1rem; animation: bob 2s ease-in-out infinite; }
+  .brands span:nth-child(2) { animation-delay: .3s; } .brands span:nth-child(3) { animation-delay: .6s; }
+  .note { font-size: .9rem; color: var(--sub); text-align: center; max-width: 560px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="step" id="step"></div>
+  <h1 id="title"></h1>
+</header>
+<div id="stage"></div>
+<div id="caption"></div>
+<nav>
+  <button id="prev">◀ 이전</button>
+  <div class="dots" id="dots"></div>
+  <button id="next">다음 ▶</button>
+  <button class="ghost" id="voice" title="말해 주기">🔊 읽어 주기</button>
+  <button class="ghost" id="auto" title="자동으로 넘기기">▶ 자동 재생</button>
+</nav>
+
+<script>
+const $ = id => document.getElementById(id);
+const stage = $("stage");
+let cur = 0, runId = 0, voiceOn = false, autoOn = false, autoTimer = null;
+
+function el(tag, cls, html, parent) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function stars(host, n = 12) {
+  const r = host.getBoundingClientRect();
+  for (let i = 0; i < n; i++) {
+    const s = el("span", "star", ["⭐", "✨", "🎉"][i % 3], host);
+    s.style.left = r.width / 2 + "px"; s.style.top = r.height / 2 + "px";
+    const a = Math.random() * 6.28, d = 60 + Math.random() * 90;
+    s.style.setProperty("--dx", Math.cos(a) * d + "px"); s.style.setProperty("--dy", Math.sin(a) * d + "px");
+    setTimeout(() => s.remove(), 1300);
+  }
+}
+const grow = (fill, p) => { fill.offsetWidth; fill.style.width = p + "%"; };
+
+/* ---------- 장면 1: 다음 말 맞히기 ---------- */
+async function s1(root, w) {
+  root.innerHTML = `<div class="row"><div class="robot">🤖</div><div class="bubble">다음에 어떤 말이 올까?</div></div>
+    <div class="sent"></div><div class="bars"></div>`;
+  const sent = root.querySelector(".sent"), bars = root.querySelector(".bars");
+  const cands = [["마셨다", 80, "var(--pink)"], ["먹었다", 15, "var(--blue)"], ["잤다", 3, "var(--yellow)"], ["달렸다", 2, "var(--green)"]];
+  while (true) {
+    sent.innerHTML = ""; bars.innerHTML = "";
+    for (const t of ["나는", "아침에", "우유를"]) { el("div", "tk", t, sent); await w(550); }
+    const q = el("div", "tk q", "?", sent);
+    await w(900);
+    const rows = cands.map(([t, p, c]) => {
+      const r = el("div", "bar", `<div class="lab">${t}</div><div class="track"><div class="fill" style="--c:${c}"></div></div><div class="pct">${p}%</div>`, bars);
+      return r;
+    });
+    for (let i = 0; i < rows.length; i++) { grow(rows[i].querySelector(".fill"), cands[i][1]); await w(450); }
+    await w(1500);
+    rows[0].classList.add("win");
+    q.className = "tk ok"; q.textContent = "마셨다";
+    stars(sent);
+    await w(3500);
+  }
+}
+
+/* ---------- 장면 2: 조각 → 숫자 → 마음 지도 ---------- */
+async function s2(root, w) {
+  root.innerHTML = `<div class="toks merge"></div><div class="map"></div>`;
+  const toks = root.querySelector(".toks"), map = root.querySelector(".map");
+  const parts = [["토끼", "var(--pink)", 1042], ["가", "var(--blue)", 77], ["당근", "var(--orange)", 5310], ["을", "var(--blue)", 91], ["먹어요", "var(--green)", 2208]];
+  const items = [["🐰", "토끼", 25, 28, 12, 78], ["🐶", "강아지", 36, 40, 85, 20], ["🥕", "당근", 72, 30, 50, 12], ["🥬", "배추", 82, 46, 20, 85], ["🥛", "우유", 48, 76, 78, 80], ["🧃", "주스", 60, 80, 45, 55]];
+  const zones = [[10, 14, 38, 50, "var(--pink)"], [58, 10, 36, 52, "var(--orange)"], [34, 58, 38, 38, "var(--blue)"]];
+  while (true) {
+    toks.innerHTML = ""; toks.classList.add("merge"); map.innerHTML = "";
+    const tks = parts.map(([t, c]) => { const d = el("div", "tk", `<span>${t}</span><span class="num"></span>`, toks); d.style.setProperty("--c", c); return d; });
+    zones.forEach(([l, t, ww, hh, c]) => { const z = el("div", "zone", "", map); z.style.cssText = `left:${l}%;top:${t}%;width:${ww}%;height:${hh}%;background:${c}`; });
+    const sp = items.map(([e, n, , , rx, ry]) => { const s = el("span", "", `${e}<small>${n}</small>`, map); s.style.left = rx + "%"; s.style.top = ry + "%"; return s; });
+    await w(1800);
+    toks.classList.remove("merge");           // 한 덩어리 → 작은 조각
+    await w(1500);
+    tks.forEach((t, i) => { const n = t.querySelector(".num"); n.textContent = "#" + parts[i][2]; n.classList.add("show"); });
+    await w(2800);
+    sp.forEach((s, i) => { s.style.left = items[i][2] + "%"; s.style.top = items[i][3] + "%"; });  // 비슷한 친구끼리 모이기
+    await w(1500); map.querySelectorAll(".zone").forEach(z => z.classList.add("show"));
+    await w(4500);
+  }
+}
+
+/* ---------- 장면 3: 어텐션 ---------- */
+async function s3(root, w) {
+  root.innerHTML = `<div class="hint">👆 낱말을 눌러 보세요!</div><div class="attn"><svg></svg><div class="toks"></div></div>`;
+  const box = root.querySelector(".attn"), svg = box.querySelector("svg"), toks = box.querySelector(".toks");
+  const words = ["토끼가", "당근을", "먹었어.", "그것은", "달콤해"];
+  const W = [[.45, .25, .30, 0, 0], [.15, .40, .45, 0, 0], [.35, .45, .20, 0, 0], [.10, .70, .10, .10, 0], [0, .55, .10, .25, .10]];
+  const cols = ["var(--pink)", "var(--orange)", "var(--green)", "var(--purple)", "var(--blue)"];
+  const tks = words.map((t, i) => { const d = el("div", "tk", `<span>${t}</span><span class="pct"></span>`, toks); d.style.setProperty("--c", cols[i]); return d; });
+  let sel = -1, pause = 0;
+  window.__redraw = () => draw(sel);
+  function draw(si) {
+    if (si < 0) return;
+    sel = si; svg.innerHTML = ""; box.querySelectorAll(".torch").forEach(t => t.remove());
+    const br = box.getBoundingClientRect();
+    const pts = tks.map(b => { const r = b.getBoundingClientRect(); return { x: r.left - br.left + r.width / 2, y: r.top - br.top - 4 }; });
+    tks.forEach((b, j) => { b.classList.toggle("src", j === si); b.querySelector(".pct").textContent = j !== si && W[si][j] ? Math.round(W[si][j] * 100) + "%" : ""; });
+    const sr = tks[si].getBoundingClientRect();
+    const torch = el("div", "torch", "🔦", box); torch.style.left = pts[si].x + "px"; torch.style.top = sr.bottom - br.top + 4 + "px";
+    W[si].forEach((wt, j) => {
+      if (!wt || j === si) return;
+      const a = pts[si], b = pts[j], h = 50 + Math.abs(si - j) * 22;
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", `M${a.x},${a.y} C${a.x},${a.y - h} ${b.x},${b.y - h} ${b.x},${b.y}`);
+      p.setAttribute("pathLength", "1"); p.setAttribute("stroke-width", 2 + wt * 16); p.setAttribute("opacity", .35 + wt * .65);
+      svg.appendChild(p);
+    });
+  }
+  tks.forEach((b, i) => b.addEventListener("click", () => { pause = Date.now() + 9000; draw(i); }));
+  await w(900);
+  const order = [3, 4, 2, 3];
+  for (let k = 0; ; k++) {
+    if (Date.now() > pause) draw(order[k % order.length]);
+    await w(3800);
+  }
+}
+
+/* ---------- 장면 4: 여러 층 ---------- */
+async function s4(root, w) {
+  root.innerHTML = `<div class="tower"></div><div class="bubble out"></div>`;
+  const tower = root.querySelector(".tower"), out = root.querySelector(".out");
+  const info = [["1층 · 낱말이 뭔지 알아봐요", "var(--pink)"], ["2층 · 말이 이어지는 규칙을 봐요", "var(--orange)"], ["3층 · 누가 뭘 했는지 알아봐요", "var(--green)"], ["4층 · 이야기의 뜻을 떠올려요", "var(--purple)"]];
+  const layers = info.map(([n, c]) => { const d = el("div", "layer", `<div class="nm">${n}</div><div class="balls"><i></i><i></i><i></i><i></i></div>`, tower); d.style.setProperty("--c", c); return d; });
+  out.textContent = "🤖 아하! 다음엔 '마셨다'가 와야겠다!";
+  while (true) {
+    layers.forEach(l => l.classList.remove("lit")); out.classList.remove("show");
+    await w(1200);
+    for (const l of layers) { l.classList.add("lit"); await w(1300); }
+    out.classList.add("show");
+    await w(3500);
+  }
+}
+
+/* ---------- 장면 5: 한 낱말씩 이어 쓰기 ---------- */
+async function s5(root, w) {
+  root.innerHTML = `<div class="story"></div><div class="dice"></div><div class="cands"></div>`;
+  const story = root.querySelector(".story"), dice = root.querySelector(".dice"), cands = root.querySelector(".cands");
+  const steps = [
+    [["토끼가", 50], ["호랑이가", 30], ["용이", 20]],
+    [["숲속에", 60], ["마을에", 30], ["달에", 10]],
+    [["살았어요", 85], ["울었어요", 10], ["날았어요", 5]],
+  ];
+  const wpick = list => { let r = Math.random() * 100; for (let i = 0; i < list.length; i++) { r -= list[i][1]; if (r <= 0) return i; } return 0; };
+  for (let round = 0; ; round++) {
+    story.innerHTML = ""; cands.innerHTML = ""; dice.textContent = "";
+    for (const t of ["옛날", "옛적에"]) { el("span", "w", t, story); await w(500); }
+    for (const list of steps) {
+      cands.innerHTML = "";
+      const cs = list.map(([t, p]) => el("div", "cand", `${t} ${p}%`, cands));
+      await w(1300);
+      const k = round === 0 ? 0 : wpick(list);
+      if (round > 0) { for (let i = 0; i < 6; i++) { dice.textContent = "🎲"; cs.forEach((c, j) => c.classList.toggle("pick", j === i % cs.length)); await w(220); } }
+      cs.forEach((c, j) => c.classList.toggle("pick", j === k));
+      dice.textContent = "";
+      await w(900);
+      el("span", "w", list[k][0], story);
+      await w(600);
+    }
+    cands.innerHTML = ""; el("span", "w", "🎉", story);
+    await w(2800);
+  }
+}
+
+/* ---------- 장면 6: 배우기 ---------- */
+async function s6(root, w) {
+  root.innerHTML = `<div class="learn"><div class="books"></div><div class="quiz">나는 아침에 우유를 <b>___</b></div><div class="guess"></div>
+    <div class="meter"><div class="lbl"><span>'마셨다'라고 맞힐 자신감</span><span class="pc"></span></div><div class="track"><div class="fill"></div></div></div>
+    <div class="cnt" style="color:var(--sub)"></div></div>`;
+  const books = root.querySelector(".books"), guess = root.querySelector(".guess"), fill = root.querySelector(".fill"), pc = root.querySelector(".pc"), cnt = root.querySelector(".cnt");
+  const rounds = [["잤다 😴", "아야! 틀렸어요 😢 → 조금 고쳐요", 5, "1번"], ["먹었다 🤔", "비슷해요! 그래도 틀렸어요 → 또 고쳐요", 20, "1,000번"], ["마셨다 🙂", "맞았어요! 👏", 55, "100만 번"], ["마셨다! 😄", "이제 아주 잘 맞혀요! 🎉", 92, "수십억 번"]];
+  while (true) {
+    books.textContent = ""; guess.textContent = ""; fill.style.width = "0"; pc.textContent = ""; cnt.textContent = "";
+    for (const [g, msg, p, n] of rounds) {
+      books.textContent = "📚📖📰📚📖📰";
+      await w(900);
+      guess.textContent = `🤖 "${g}"`;
+      await w(900);
+      guess.textContent = `🤖 "${g}"  ${msg}`;
+      grow(fill, p); pc.textContent = p + "%"; cnt.textContent = `연습한 횟수: ${n}`;
+      await w(2200);
+    }
+    stars(root.querySelector(".learn"));
+    await w(3000);
+  }
+}
+
+/* ---------- 장면 7: 정리 ---------- */
+async function s7(root, w) {
+  root.innerHTML = `<div class="recap"></div><div class="brands"><span>ChatGPT</span><span>Gemini</span><span>Claude</span></div>
+    <div class="note">진짜 AI는 숫자가 수십억 개나 들어 있어요. 이 그림은 이해하기 쉽게 아주 많이 줄여서 그린 거예요.</div>`;
+  const rc = root.querySelector(".recap");
+  const rows = [["✂️", "말을 작은 조각으로 자르고", "var(--pink)"], ["🔢", "조각마다 숫자 이름표를 붙이고", "var(--orange)"], ["🔦", "중요한 말에 '주목' 하고", "var(--purple)"], ["🏢", "여러 층에서 곰곰이 생각해서", "var(--blue)"], ["🎯", "다음 말을 하나 골라요. 그걸 계속 반복!", "var(--green)"]];
+  for (const [e, t, c] of rows) { const d = el("div", "rc", `<b>${e}</b><span>${t}</span>`, rc); d.style.setProperty("--c", c); await w(700); }
+  while (true) await w(5000);
+}
+
+const scenes = [
+  { t: "다음 말 맞히기 놀이", cap: "AI 로봇이 하는 일은 딱 하나예요. '다음에 올 말'을 맞히는 놀이! 가장 그럴듯한 말에 점수를 더 많이 줘요.", run: s1 },
+  { t: "말을 조각내고 숫자로 바꿔요", cap: "컴퓨터는 글자를 몰라요. 그래서 말을 작은 조각으로 자르고 숫자 이름표를 붙여요. 뜻이 비슷한 친구는 가까이 앉아요!", run: s2 },
+  { t: "주목! 어떤 말이 중요할까?", cap: "'그것'이 뭘까요? 로봇은 앞에 나온 말을 모두 살펴보고 '당근이구나!' 하고 알아내요. 굵은 선일수록 더 눈여겨보는 거예요. 이 마법이 '어텐션'이에요.", run: s3 },
+  { t: "여러 층에서 곰곰이 생각해요", cap: "한 번만 보는 게 아니라 층을 하나씩 올라가며 생각해요. 위층으로 갈수록 말의 뜻을 더 깊이 알게 돼요.", run: s4 },
+  { t: "한 낱말씩 이어서 말해요", cap: "다음 말을 하나 고르고, 그 말을 붙인 다음 또 다음 말을 골라요. 가끔 주사위를 굴려서 고르니까 이야기가 매번 달라져요!", run: s5 },
+  { t: "어떻게 똑똑해졌을까요?", cap: "책을 엄청 많이 읽으며 다음 말 맞히기 연습을 해요. 틀리면 조금 고치고, 맞히면 자신감이 올라가요. 이걸 수십억 번 해요!", run: s6 },
+  { t: "정리해 볼까요?", cap: "ChatGPT, Gemini, Claude 같은 말하는 AI는 모두 '다음 말 맞히기'를 아주 잘하는 친구들이에요. 이 방식의 이름이 바로 '트랜스포머'랍니다!", run: s7 },
+];
+
+function makeWait(id) { return ms => new Promise((res, rej) => setTimeout(() => id === runId ? res() : rej("stop"), ms)); }
+function go(n) {
+  cur = Math.max(0, Math.min(scenes.length - 1, n));
+  runId++; window.__redraw = null;
+  const id = runId, s = scenes[cur];
+  stage.innerHTML = "";
+  $("step").textContent = `${cur + 1} / ${scenes.length}`;
+  $("title").textContent = s.t;
+  $("caption").textContent = s.cap;
+  $("prev").disabled = cur === 0; $("next").disabled = cur === scenes.length - 1;
+  document.querySelectorAll(".dots i").forEach((d, i) => d.classList.toggle("on", i === cur));
+  if (voiceOn) speak(s.cap);
+  clearTimeout(autoTimer);
+  if (autoOn && cur < scenes.length - 1) autoTimer = setTimeout(() => go(cur + 1), 17000);
+  s.run(stage, makeWait(id)).catch(e => { if (e !== "stop") console.error(e); });
+}
+function speak(text) {
+  if (!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.lang = "ko-KR"; u.rate = .9; speechSynthesis.speak(u);
+}
+
+scenes.forEach((_, i) => { const d = el("i", "", "", $("dots")); d.addEventListener("click", () => go(i)); });
+$("prev").onclick = () => go(cur - 1);
+$("next").onclick = () => go(cur + 1);
+$("voice").onclick = e => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); voiceOn ? speak(scenes[cur].cap) : speechSynthesis.cancel(); };
+$("auto").onclick = e => { autoOn = !autoOn; e.currentTarget.classList.toggle("on", autoOn); e.currentTarget.textContent = autoOn ? "⏸ 자동 재생 중" : "▶ 자동 재생"; go(cur); };
+addEventListener("keydown", e => { if (e.key === "ArrowRight") go(cur + 1); if (e.key === "ArrowLeft") go(cur - 1); });
+addEventListener("resize", () => window.__redraw && window.__redraw());
+go(0);
+</script>
+</body>
+</html>

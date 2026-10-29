@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>three.js 애니메이션</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05060f; }
+  canvas { display: block; }
+  #hint {
+    position: fixed; left: 16px; bottom: 14px; color: #9aa4d6;
+    font: 13px/1.4 system-ui, sans-serif; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="hint">마우스 드래그: 회전 · 휠: 확대/축소</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x05060f, 0.03);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 3, 12);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.6;
+
+// 조명
+scene.add(new THREE.AmbientLight(0x404070, 1.2));
+const l1 = new THREE.PointLight(0xff4fa3, 60, 40); scene.add(l1);
+const l2 = new THREE.PointLight(0x4fd2ff, 60, 40); scene.add(l2);
+
+// 중앙 토러스 매듭
+const knot = new THREE.Mesh(
+  new THREE.TorusKnotGeometry(1.6, 0.5, 220, 32),
+  new THREE.MeshStandardMaterial({ color: 0x8a7cff, metalness: 0.7, roughness: 0.25 })
+);
+scene.add(knot);
+
+// 궤도를 도는 구체들
+const orbiters = [];
+for (let i = 0; i < 8; i++) {
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(0.28, 24, 24),
+    new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(i / 8, 0.9, 0.6),
+      emissive: new THREE.Color().setHSL(i / 8, 0.9, 0.3),
+      metalness: 0.3, roughness: 0.3
+    })
+  );
+  m.userData = { r: 4 + (i % 3) * 0.9, speed: 0.4 + i * 0.07, phase: i * Math.PI / 4, tilt: i * 0.35 };
+  scene.add(m);
+  orbiters.push(m);
+}
+
+// 별 파티클
+const N = 2500;
+const pos = new Float32Array(N * 3);
+for (let i = 0; i < N; i++) {
+  const r = 15 + Math.random() * 45;
+  const th = Math.random() * Math.PI * 2;
+  const ph = Math.acos(2 * Math.random() - 1);
+  pos[i * 3]     = r * Math.sin(ph) * Math.cos(th);
+  pos[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th);
+  pos[i * 3 + 2] = r * Math.cos(ph);
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0.85 }));
+scene.add(stars);
+
+// 바닥 격자
+const grid = new THREE.GridHelper(60, 60, 0x3a3f8f, 0x1a1d44);
+grid.position.y = -4;
+scene.add(grid);
+
+const clock = new THREE.Clock();
+function animate() {
+  const t = clock.getElapsedTime();
+
+  knot.rotation.x = t * 0.3;
+  knot.rotation.y = t * 0.5;
+  knot.scale.setScalar(1 + Math.sin(t * 2) * 0.05);
+
+  orbiters.forEach(o => {
+    const { r, speed, phase, tilt } = o.userData;
+    const a = t * speed + phase;
+    o.position.set(Math.cos(a) * r, Math.sin(a * 2 + tilt) * 1.5, Math.sin(a) * r);
+  });
+
+  l1.position.set(Math.cos(t) * 7, 3, Math.sin(t) * 7);
+  l2.position.set(Math.cos(t + Math.PI) * 7, -2, Math.sin(t + Math.PI) * 7);
+
+  stars.rotation.y = t * 0.02;
+
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
